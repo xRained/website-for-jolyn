@@ -44,12 +44,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (user) { // User is logged in
       console.log('User signed in:', user.user_metadata.full_name);
       authContainer.innerHTML = `<li><a href="#" id="logout-button">Logout</a></li>`;
-      document.getElementById('logout-button').addEventListener('click', async () => {
+      const logoutButton = document.getElementById('logout-button');
+      logoutButton.addEventListener('click', async (e) => {
+        e.preventDefault(); // Prevent the link from navigating
         if (confirm('Are you sure you want to log out?')) {
-          document.body.innerHTML = '<h1 style="text-align: center; margin-top: 50px; font-family: sans-serif; color: #5C5470;">Logging out...</h1>';
+          logoutButton.textContent = 'Logging out...';
+          logoutButton.style.pointerEvents = 'none'; // Disable further clicks
           await supabase.auth.signOut();
-          // The onAuthStateChange listener will handle the UI update, but a reload is a safe fallback.
-          location.reload();
+          // No reload needed! onAuthStateChange will handle the UI update automatically.
         }
       });
 
@@ -65,7 +67,8 @@ document.addEventListener('DOMContentLoaded', function() {
     } else { // User is logged out
       console.log('User signed out.');
       authContainer.innerHTML = `<li><a href="#" id="login-button">Login with Google</a></li>`;
-      document.getElementById('login-button').addEventListener('click', () => {
+      document.getElementById('login-button').addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent the link from navigating
         supabase.auth.signInWithOAuth({ provider: 'google' });
       });
 
