@@ -1,292 +1,364 @@
 document.addEventListener('DOMContentLoaded', function() {
-
-  // Use the supabaseClient we defined in index.html
-  const supabase = window.supabaseClient;  
-  // Critical check to ensure Supabase is initialized
+  const supabase = window.supabaseClient;
   if (!supabase) {
     console.error("Supabase client is not initialized. Check index.html.");
     alert("A critical error occurred. Please refresh the page.");
     return;
   }
 
-  // --- Element Selectors ---
-  const authContainer = document.getElementById('auth-container');
-  const userProfileArea = document.getElementById('user-profile-area'); // Can be null if map section is removed
-  const addLocationButton = document.getElementById('add-location-button'); // Can be null
-  const locationNotice = document.querySelector('.location-notice'); // Can be null
-  const iconUploadInput = document.getElementById('icon-upload'); // Can be null
-  const uploadButton = document.getElementById('upload-button'); // Can be null
-  const galleryUploadButton = document.getElementById('gallery-upload-button'); // In modal
-  const galleryGrid = document.querySelector('.gallery-grid'); // In gallery section
-  const modal = document.getElementById('upload-modal'); // For gallery uploads
-  const notesContainer = document.querySelector('.notes-container'); // In notes section
-  const stopLocationButton = document.getElementById('stop-location-button'); // Can be null
-  const timelineContainer = document.querySelector('.timeline-container'); // In timeline section
-  const favoritesList = document.querySelector('.favorites-list'); // In favorites section
-  const openModalButton = document.getElementById('open-upload-modal-button'); // In gallery section
-  const closeModalButton = document.querySelector('.close-button'); // In modal
-  const galleryFileInput = document.getElementById('gallery-upload-file'); // In modal
-  const imagePreviewContainer = document.getElementById('image-preview-container'); // In modal
-  const imagePreview = document.getElementById('image-preview'); // In modal
-  const imageViewerModal = document.getElementById('image-viewer-modal'); // For viewing images
-  const fullscreenImage = document.getElementById('fullscreen-image'); // In viewer modal
-  const closeViewerButton = document.querySelector('.close-viewer-button'); // In viewer modal
+  // --- State Management ---
+  let state = {
+    map: null,
+    userMarkers: {},
+    locationWatchId: null,
+    currentUserLocation: null,
+    routingControl: null,
+    userProfile: null,
+    isStartingLocation: false, // Flag to prevent double-clicks
+    userCache: {}, // Cache for user names
+  };
 
-  // --- Map Variables ---
-  let map = null;
-  let userMarkers = {}; // To keep track of markers on the map
-  let locationWatchId = null; // To store the ID of the location watcher
+  // --- DOM Elements (cached for performance) ---
+  const DOMElements = {
+    authContainer: document.getElementById('auth-container'),
+    navLinks: document.querySelector('.nav-links'),
+    menuToggle: document.querySelector('.menu-toggle'),
+    userProfileArea: document.getElementById('user-profile-area'),
+    galleryGrid: document.querySelector('.gallery-grid'),
+    notesContainer: document.querySelector('.notes-container'),
+    timelineContainer: document.querySelector('.timeline-container'),
+    favoritesList: document.querySelector('.favorites-list'),
+    uploadModal: document.getElementById('upload-modal'),
+    imageViewerModal: document.getElementById('image-viewer-modal'),
+    loginModal: document.getElementById('login-modal'),
+    routeInfoBox: document.getElementById('route-info-box'),
+    locationNotice: document.getElementById('location-notice-text'),
+    addLocationButton: document.getElementById('add-location-button'),
+  };
 
-  // --- Authentication ---
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    const user = session?.user;
+  // --- Helper Functions ---
+  function formatTimeAgo(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + " years ago";
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + " months ago";
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + " days ago";
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+    if (seconds < 10) return "just now";
+    return Math.floor(seconds) + " seconds ago";
+  }
 
-    if (user) { // User is logged in
+  async function getUserName(userId) {
+    if (!userId) return "Someone";
+    if (state.userCache[userId]) return state.userCache[userId];
+
+    const { data, error } = await supabase.from('profiles').select('display_name').eq('id', userId).single();
+    
+    if (error || !data?.display_name) {
+      console.warn(`Could not fetch name for user ${userId}:`, error?.message);
+      return "A user"; // Fallback
+    }
+    const firstName = data.display_name.split(' ')[0];
+    state.userCache[userId] = firstName;
+    return firstName;
+  }
+
+  // --- UI & State Updates ---
+  async function updateUIForAuthState(user) {
+    const isLoggedIn = !!user; // true if user object exists, false otherwise
+    document.body.classList.toggle('logged-in', isLoggedIn);
+    document.body.classList.toggle('logged-out', !isLoggedIn);
+
+    // Clear previous auth button to prevent duplicate listeners
+    DOMElements.authContainer.innerHTML = ''; 
+
+    if (isLoggedIn) {
+      // --- LOGGED-IN STATE ---
       console.log('User signed in:', user.user_metadata.full_name);
-      authContainer.innerHTML = `<li><a href="#" id="logout-button">Logout</a></li>`;
-      const logoutButton = document.getElementById('logout-button');
+
+      // Create and configure the Logout button
+      const logoutButton = document.createElement('a');
+      logoutButton.href = '#';
+      logoutButton.id = 'logout-button';
+      logoutButton.className = 'cta-button';
+      logoutButton.textContent = 'Logout';
       logoutButton.addEventListener('click', async (e) => {
-        e.preventDefault(); // Prevent the link from navigating
+        e.preventDefault();
         if (confirm('Are you sure you want to log out?')) {
-          logoutButton.textContent = 'Logging out...';
-          logoutButton.style.pointerEvents = 'none'; // Disable further clicks
           await supabase.auth.signOut();
-          // No reload needed! onAuthStateChange will handle the UI update automatically.
+          location.reload(); // Reload the page for a clean, logged-out state
         }
       });
+      DOMElements.authContainer.appendChild(logoutButton);
 
-      // Show user-specific UI
-      // Check if these elements exist before manipulating them
-      if (addLocationButton) addLocationButton.style.display = 'block';
-      if (locationNotice) locationNotice.style.display = 'none';
-      if (openModalButton) openModalButton.style.display = 'block'; // Show the "Add Moment" button
+      // Fetch profile and initialize user-specific features
+      state.userProfile = await getProfile(user.id);
+      if (DOMElements.userProfileArea) {
+        document.getElementById('user-name').textContent = user.user_metadata.full_name;
+        document.getElementById('user-icon').src = state.userProfile?.icon_url || 'https://via.placeholder.com/50';
+      }
 
-      // Set up delete functionality now that we know a user is logged in
-      setupDeleteFunctionality();
-
-    } else { // User is logged out
+      // Initialize map and location features now that user is logged in
+      if (document.getElementById('map') && !state.map) {
+        initializeMap();
+        await loadInitialLocations();
+      }
+      if (!window.locationChannel) {
+        window.locationChannel = listenForUserLocations();
+      }
+    } else {
+      // --- LOGGED-OUT STATE ---
       console.log('User signed out.');
-      authContainer.innerHTML = `<li><a href="#" id="login-button">Login with Google</a></li>`;
-      document.getElementById('login-button').addEventListener('click', (e) => {
-        e.preventDefault(); // Prevent the link from navigating
-        supabase.auth.signInWithOAuth({ provider: 'google' });
-      });
 
-      // Hide user-specific UI
-      if (addLocationButton) addLocationButton.style.display = 'none';
-      if (locationNotice) locationNotice.style.display = 'block';
-      if (openModalButton) openModalButton.style.display = 'none'; // Hide the "Add Moment" button
-      if (stopLocationButton) stopLocationButton.style.display = 'none';
-      if (map) { map.remove(); map = null; }
+      // Create and configure the Login button
+      const loginButton = document.createElement('a');
+      loginButton.href = '#';
+      loginButton.id = 'login-button';
+      loginButton.className = 'cta-button';
+      loginButton.textContent = 'Login';
+      loginButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        DOMElements.loginModal.style.display = 'flex'; // Open the login choice modal
+      });
+      DOMElements.authContainer.appendChild(loginButton);
+
+      state.userProfile = null;
+      stopLocationSharing();
     }
-  });
+  }
 
   // --- Profile Management ---
-  // Check if uploadButton exists before adding listener
-  if (uploadButton) {
-    uploadButton.addEventListener('click', async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const file = iconUploadInput.files[0];
-    if (!user || !file) return;
-
+  async function handleIconUpload(file) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || !file) return;
+    const user = session.user;
     const statusElem = document.getElementById('upload-status');
     statusElem.textContent = 'Uploading...';
-
     const filePath = `${user.id}/${file.name}`;
-
     try {
-      // Upload file to Supabase Storage
       const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
-
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
-
-      // Update profile in the database
-      const { error: dbError } = await supabase.from('profiles').upsert({ id: user.id, icon_url: publicUrl, display_name: user.user_metadata.full_name });
+      const { data: updatedProfile, error: dbError } = await supabase.from('profiles').upsert({ id: user.id, icon_url: publicUrl, display_name: user.user_metadata.full_name }).select().single();
       if (dbError) throw dbError;
-
-      // Also update the icon in the locations table so the map marker updates instantly
       await supabase.from('locations').update({ icon_url: publicUrl }).eq('id', user.id);
-
+      state.userProfile = updatedProfile;
       document.getElementById('user-icon').src = publicUrl;
       statusElem.textContent = 'Upload complete!';
     } catch (error) {
       console.error("Upload failed:", error);
       statusElem.textContent = 'Upload failed.';
     }
-  });
   }
 
   async function getProfile(userId) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (error) console.error('Error fetching profile:', error);
+    if (error && error.code !== 'PGRST116') console.error('Error fetching profile:', error);
     return data;
   }
 
   // --- Map and Location Logic ---
   function initializeMap() {
-    if (map) return;
-    map = L.map('map').setView([51.505, -0.09], 2); // Default view
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    if (state.map) return;
+    const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>' });
+    const osmStreetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+    const esriSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' });
+    
+    // Google Maps Layers (requires Leaflet.GridLayer.GoogleMutant plugin)
+    const googleStreets = L.gridLayer.googleMutant({ type: 'roadmap' }); // 'roadmap', 'satellite', 'terrain', 'hybrid'
+    const googleSatellite = L.gridLayer.googleMutant({ type: 'satellite' });
+    const googleHybrid = L.gridLayer.googleMutant({ type: 'hybrid' });
+
+    state.map = L.map('map', { zoomControl: false }).setView([51.505, -0.09], 2);
+    darkLayer.addTo(state.map);
+    L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+    const baseLayers = { "Dark": darkLayer, "Street (OSM)": osmStreetLayer, "Satellite (Esri)": esriSatelliteLayer, "Google Street": googleStreets, "Google Satellite": googleSatellite, "Google Hybrid": googleHybrid };
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(state.map);
   }
 
-  // New function to load existing locations when the map is first initialized
   async function loadInitialLocations() {
     const { data: locations, error } = await supabase.from('locations').select('*');
-    if (error) {
-      console.error('Error fetching initial locations:', error);
-      return;
-    }
-
-    locations.forEach(userData => {
-      const uid = userData.id;
-      const customIcon = L.icon({
-        iconUrl: userData.icon_url,
-        iconSize: [40, 40],
-        iconAnchor: [20, 40],
-        popupAnchor: [0, -40]
-      });
-
-      const marker = L.marker([userData.lat, userData.lng], { icon: customIcon })
-        .addTo(map)
-        .bindPopup(`<b>${userData.display_name}</b>`);
-
-      userMarkers[uid] = marker;
-    });
-
-    // Center the map after loading the initial markers
-    const allMarkers = Object.values(userMarkers);
+    if (error) return console.error('Error fetching initial locations:', error);
+    locations.forEach(userData => updateUserMarker(userData));
+    const allMarkers = Object.values(state.userMarkers);
     if (allMarkers.length > 0) {
       const group = new L.featureGroup(allMarkers);
-      map.fitBounds(group.getBounds().pad(0.5));
+      state.map.fitBounds(group.getBounds().pad(0.5));
     }
   }
 
-  // New: Event listener for the "Add Live Location" button
-  // Check if button exists before adding listener
-  if (addLocationButton) {
-    addLocationButton.addEventListener('click', async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert("Please log in to use the live map feature.");
-      return;
-    }
-
-    userProfileArea.style.display = 'block'; // Show the profile area
-    addLocationButton.style.display = 'none'; // Hide the 'Add' button
-    if (stopLocationButton) {
-      stopLocationButton.style.display = 'inline-block'; // Show the 'Stop' button
-    }
-    // Now, initialize the map and user profile info
-    document.getElementById('user-name').textContent = user.user_metadata.full_name;
-    const profile = await getProfile(user.id);
-    document.getElementById('user-icon').src = profile?.icon_url || 'https://via.placeholder.com/50';
-    initializeMap();
-    await loadInitialLocations();
-    startLocationSharing(user, profile);
-    listenForUserLocations();
-  });
+  // --- New Location Logic ---
+  function showLocationNotice(message, isError = false) {
+    if (!DOMElements.locationNotice) return;
+    DOMElements.locationNotice.textContent = message;
+    DOMElements.locationNotice.style.color = isError ? 'var(--danger)' : 'var(--text-light)';
+    DOMElements.locationNotice.style.display = message ? 'block' : 'none';
   }
 
-  function startLocationSharing(user, profile) {
-    // If we are already watching, clear the old watch first.
-    if (locationWatchId) {
-      navigator.geolocation.clearWatch(locationWatchId);
-    }
-    locationWatchId = navigator.geolocation.watchPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      console.log('Updating location:', latitude, longitude);
-      await supabase.from('locations').upsert({
-        id: user.id,
-        lat: latitude,
-        lng: longitude,
-        display_name: user.user_metadata.full_name,
-        icon_url: profile?.icon_url || 'https://via.placeholder.com/50',
-        updated_at: new Date().toISOString()
-      });
-    }, error => {
-      console.error("Geolocation error:", error);
-      alert("Location access was denied. Your live location will not be shared on the map.");
-    }, { enableHighAccuracy: true });
+  async function startLocationSharing() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return showLocationNotice("You must be logged in to share your location.", true);
+    if (state.locationWatchId || state.isStartingLocation) return;
+    if (!navigator.geolocation) return showLocationNotice("Geolocation is not supported by your browser.", true);
+
+    state.isStartingLocation = true;
+    DOMElements.addLocationButton.textContent = 'Starting...';
+    showLocationNotice('Requesting location access. Please check your browser for a permission prompt.');
+
+    // This timeout gives the user a moment to read the notice before the browser prompt appears.
+    setTimeout(() => {
+        state.locationWatchId = navigator.geolocation.watchPosition(
+            async (position) => {
+                // --- On Success ---
+                state.isStartingLocation = false;
+                showLocationNotice(''); // Clear notice on success
+                document.body.classList.add('is-sharing-location');
+                DOMElements.addLocationButton.textContent = 'Share Live Location'; // Reset button text
+
+                const { latitude, longitude } = position.coords;
+                state.currentUserLocation = [latitude, longitude];
+
+                // If a route is active, update it
+                if (state.routingControl) {
+                    state.routingControl.spliceWaypoints(0, 1, L.latLng(latitude, longitude));
+                }
+
+                await supabase.from('locations').upsert({
+                    id: session.user.id,
+                    lat: latitude,
+                    lng: longitude,
+                    display_name: session.user.user_metadata.full_name,
+                    icon_url: state.userProfile?.icon_url || 'https://via.placeholder.com/50',
+                    updated_at: new Date().toISOString()
+                });
+            },
+            (error) => {
+                // --- On Error ---
+                console.error("Geolocation error:", error);
+                let message = "An unknown error occurred while getting your location.";
+                if (error.code === error.PERMISSION_DENIED) {
+                    message = "Location access was denied. To use this feature, please enable location permissions for this site in your browser settings.";
+                }
+                showLocationNotice(message, true);
+                stopLocationSharing(); // Clean up state
+            },
+            // --- Options ---
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
+    }, 500); // 0.5 second delay
   }
 
-  // New: Event listener for the "Stop Sharing" button
-  if (stopLocationButton) {
-    stopLocationButton.addEventListener('click', () => {
-      if (locationWatchId) {
-        navigator.geolocation.clearWatch(locationWatchId);
-        locationWatchId = null;
-        console.log('Stopped sharing location.');
-        alert('You have stopped sharing your live location.');
-      }
-      // Reset UI
-      stopLocationButton.style.display = 'none';
-      if (addLocationButton) {
-        addLocationButton.style.display = 'inline-block';
-      }
+  function stopLocationSharing() {
+    if (state.locationWatchId) {
+      navigator.geolocation.clearWatch(state.locationWatchId);
+      state.locationWatchId = null;
+      console.log('Stopped sharing location.');
+    }
+    if (state.routingControl) {
+      state.map.removeControl(state.routingControl);
+      state.routingControl = null;
+      if (DOMElements.routeInfoBox) DOMElements.routeInfoBox.style.display = 'none';
+    }
+    document.body.classList.remove('is-sharing-location');
+    showLocationNotice(''); // Clear any notices
+    state.isStartingLocation = false;
+    DOMElements.addLocationButton.textContent = 'Share Live Location';
+  }
+
+  function listenForUserLocations() {
+    if (window.locationChannel) supabase.removeChannel(window.locationChannel);
+    window.locationChannel = supabase.channel('locations-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, payload => {
+        updateUserMarker(payload.new);
+      })
+      .subscribe();
+    return window.locationChannel;
+  }
+
+  function updateUserMarker(userData) {
+    if (!userData || !state.map) return;
+    const uid = userData.id;
+    if (state.userMarkers[uid]) {
+        // Just update position and popup content instead of removing/re-adding
+        state.userMarkers[uid].setLatLng([userData.lat, userData.lng]);
+        state.userMarkers[uid].setPopupContent(createPopupContent(userData));
+        return;
+    }
+    const customIcon = L.icon({ iconUrl: userData.icon_url, iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -40] });
+    const marker = L.marker([userData.lat, userData.lng], { icon: customIcon }).addTo(state.map).bindPopup(createPopupContent(userData));
+    state.userMarkers[uid] = marker;
+  }
+
+  function drawRoute(destination, mode) {
+    if (!state.currentUserLocation) return showLocationNotice("Your location is not available yet. Please wait a moment and try again.", true);
+    if (state.routingControl) state.map.removeControl(state.routingControl);
+    state.routingControl = L.Routing.control({
+      waypoints: [L.latLng(state.currentUserLocation[0], state.currentUserLocation[1]), L.latLng(destination[0], destination[1])],
+      routeWhileDragging: true,
+      router: L.Routing.osrmv1({ serviceUrl: `https://router.project-osrm.org/route/v1`, profile: mode }),
+      createMarker: () => null,
+      lineOptions: { styles: [{ color: '#1DB954', opacity: 0.8, weight: 6 }] },
+      show: false,
+      addWaypoints: false
+    }).addTo(state.map);
+
+    state.routingControl.on('routesfound', function(e) {
+      const route = e.routes[0];
+      const summary = route.summary;
+      const totalSeconds = summary.totalTime;
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const etaString = (hours > 0 ? `${hours} hr ` : '') + `${minutes} min`;
+      const distanceKm = (summary.totalDistance / 1000).toFixed(1);
+      document.getElementById('route-eta').textContent = etaString;
+      document.getElementById('route-distance').textContent = `${distanceKm} km`;
+      if (DOMElements.routeInfoBox) DOMElements.routeInfoBox.style.display = 'block';
     });
   }
 
-  // Listen for real-time location changes
-  function listenForUserLocations() {
-    const channel = supabase.channel('locations-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, payload => {
-        const userData = payload.new;
-        const uid = userData.id;
-
-        // Remove old marker if it exists
-        if (userMarkers[uid]) { map.removeLayer(userMarkers[uid]); }
-
-        // Create a custom icon
-        const customIcon = L.icon({
-          iconUrl: userData.icon_url,
-          iconSize: [40, 40],
-          iconAnchor: [20, 40],
-          popupAnchor: [0, -40]
-        });
-
-        // Add new marker
-        const marker = L.marker([userData.lat, userData.lng], { icon: customIcon })
-          .addTo(map)
-          .bindPopup(`<b>${userData.display_name}</b>`);
-
-        userMarkers[uid] = marker;
-
-        // Fit map to show all markers
-        const allMarkers = Object.values(userMarkers);
-        if (allMarkers.length > 0) {
-          const group = new L.featureGroup(allMarkers);
-          map.fitBounds(group.getBounds().pad(0.5));
-        }
-      })
-      .subscribe();
-    return channel;
+  function createPopupContent(userData) {
+    const timeAgo = formatTimeAgo(userData.updated_at);
+    return `
+      <b>${userData.display_name}</b><br>
+      <span class="timestamp">Updated ${timeAgo}</span>
+      <div class="route-buttons-container"><button class="route-button" data-lat="${userData.lat}" data-lng="${userData.lng}" data-mode="walking">Walk</button> <button class="route-button" data-lat="${userData.lat}" data-lng="${userData.lng}" data-mode="driving">Drive</button></div>
+    `;
   }
 
   // --- Gallery Logic ---
   async function loadGallery() {
-    // Get the current user session to decide if we should show delete buttons
+    if (!DOMElements.galleryGrid) return;
     const { data: { session } } = await supabase.auth.getSession();
+    // Select user_id to know who uploaded the photo
+    const { data, error } = await supabase.from('gallery').select('id, url, user_id').order('created_at', { ascending: false });
+    if (error) return console.error('Error loading gallery:', error);
+    DOMElements.galleryGrid.innerHTML = '';
 
-    const { data, error } = await supabase.from('gallery').select('id, url').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error loading gallery:', error);
-      return;
-    }
-
-    if (galleryGrid) galleryGrid.innerHTML = ''; // Clear existing gallery
-    data.forEach(image => {
+    for (const image of data) {
+      const creatorName = await getUserName(image.user_id);
       const itemDiv = document.createElement('div');
       itemDiv.className = 'gallery-item';
-
+      
       const img = document.createElement('img');
-      img.src = image.url;
-      img.alt = 'Gallery moment';
+      img.src = image.url; img.alt = 'Gallery moment';
       itemDiv.appendChild(img);
 
-      // If a user is logged in, add a delete button to the image
-      if (session) {
+      // Add creator name overlay
+      const creatorOverlay = document.createElement('div');
+      creatorOverlay.className = 'creator-overlay';
+      creatorOverlay.textContent = `Added by ${creatorName}`;
+      itemDiv.appendChild(creatorOverlay);
+
+      // Add delete button if the current user owns the photo
+      if (session && session.user.id === image.user_id) {
         const deleteButton = document.createElement('button');
         deleteButton.className = 'delete-photo-button';
         deleteButton.innerHTML = '&times;'; // A nice 'x' character
@@ -294,214 +366,191 @@ document.addEventListener('DOMContentLoaded', function() {
         itemDiv.appendChild(deleteButton);
       }
 
-      if (galleryGrid) galleryGrid.appendChild(itemDiv);
-    });
-  }
-
-  // --- Image Viewer Logic ---
-  // Check if galleryGrid exists before adding listener
-  if (galleryGrid) {
-    galleryGrid.addEventListener('click', (event) => {
-    // Check if an image inside the gallery was clicked (but not the delete button)
-    if (event.target.tagName === 'IMG') {
-      imageViewerModal.style.display = 'flex'; // Use flex for centering
-      fullscreenImage.src = event.target.src;
-    }
-  });
-
-  }
-  function closeImageViewer() {
-    imageViewerModal.style.display = 'none';
-  }
-
-  closeViewerButton.addEventListener('click', closeImageViewer);
-  imageViewerModal.addEventListener('click', (event) => { if (event.target === imageViewerModal) closeImageViewer(); });
-
-  // Add a single event listener to the grid to handle all delete clicks
-  async function setupDeleteFunctionality() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session && galleryGrid) {
-      galleryGrid.addEventListener('click', async (event) => {
-      if (event.target.classList.contains('delete-photo-button')) {
-        const imageId = event.target.getAttribute('data-image-id');
-        if (confirm('Are you sure you want to delete this photo?')) {
-          await deletePhoto(imageId);
-        }
-      }
-    });
+      DOMElements.galleryGrid.appendChild(itemDiv);
     }
   }
 
   async function deletePhoto(imageId) {
+    if (!imageId) return alert("Image ID is missing. Deletion aborted.");
     try {
-      // Critical safety check: Do not proceed if the imageId is missing.
-      if (!imageId) {
-        throw new Error("Image ID is missing. Deletion aborted for safety.");
-      }
-
-      // 1. Get image URL from DB to find the file path
-      const { data: image, error: fetchError } = await supabase.from('gallery').select('url').eq('id', imageId).single();
+      const { data: image, error: fetchError } = await supabase.from('gallery').select('url, user_id').eq('id', imageId).single();
       if (fetchError) throw fetchError;
-      if (!image || !image.url) throw new Error("Image record or URL not found in database.");
 
-      // --- ROBUST FIX: Safely extract the file path from the URL ---
-      const urlPath = new URL(image.url).pathname;
-      const pathParts = urlPath.split('/media/');
-      if (pathParts.length < 2) {
-        throw new Error("Could not determine the file path from the URL for deletion.");
+      // Security check: ensure only the owner can delete
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user.id !== image.user_id) {
+        return alert("You can only delete photos you have uploaded.");
       }
-      const filePath = pathParts[1];
 
-      // 2. Delete from the 'gallery' database table first
+      const urlPath = new URL(image.url).pathname;
+      const filePath = urlPath.substring(urlPath.indexOf('/media/') + '/media/'.length);
       const { error: dbError } = await supabase.from('gallery').delete().match({ id: imageId });
       if (dbError) throw dbError;
-
-      // 3. Delete from Supabase Storage
       const { error: storageError } = await supabase.storage.from('media').remove([filePath]);
       if (storageError) throw storageError;
-
-      console.log('Photo deleted successfully');
-      alert('Photo deleted successfully!'); // Add success pop-up
-      loadGallery(); // Refresh the gallery to show the change
+      loadGallery();
     } catch (error) {
       console.error('Error deleting photo:', error);
-      alert('There was an error deleting the photo.');
+      alert('Error: Could not delete the photo.');
     }
   }
-
-  // --- Modal Logic ---
-  if (openModalButton) {
-    openModalButton.addEventListener('click', () => {
-    modal.style.display = 'block';
-  });
-  }
-
-  closeModalButton.addEventListener('click', () => {
-    modal.style.display = 'none';
-    imagePreviewContainer.style.display = 'none'; // Hide preview on close
-    galleryFileInput.value = ''; // Reset file input
-  });
-
-  window.addEventListener('click', (event) => {
-    if (event.target == modal) {
-      modal.style.display = 'none';
-      imagePreviewContainer.style.display = 'none';
-      galleryFileInput.value = '';
-    }
-  });
-
-  galleryFileInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        imagePreview.setAttribute('src', e.target.result);
-        imagePreviewContainer.style.display = 'block';
-      }
-      reader.readAsDataURL(file);
-    }
-  });
-
-  galleryUploadButton.addEventListener('click', async () => {
-    const file = galleryFileInput.files[0];
-    if (!file) {
-      alert('Please select an image to upload.');
-      return;
-    }
-
-    galleryUploadButton.textContent = 'Uploading...';
-    galleryUploadButton.disabled = true;
-
-    const filePath = `gallery/${Date.now()}-${file.name}`;
-
-    try {
-      const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
-      if (uploadError) throw uploadError;
-      
-      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
-
-      const { error: dbError } = await supabase.from('gallery').insert({ url: publicUrl }).select();
-      if (dbError) throw dbError;
-
-      alert('Photo uploaded successfully!');
-      galleryFileInput.value = ''; // Clear the file input
-      modal.style.display = 'none'; // Close the modal
-      imagePreviewContainer.style.display = 'none'; // Hide preview
-      loadGallery(); // Refresh the gallery
-    } catch (error) {
-      console.error("Error uploading to gallery: ", error);
-      alert('Sorry, there was an error uploading your photo.');
-    } finally {
-      // Restore the button state
-      galleryUploadButton.textContent = 'Upload Photo';
-      galleryUploadButton.disabled = false;
-    }
-  });
 
   // --- Content Loading ---
-  async function loadNotes() {
-    const { data, error } = await supabase.from('notes').select('content').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error loading notes:', error);
-      return;
+  const contentLoaders = {
+    notes: async () => {
+      const { data } = await supabase.from('notes').select('*, profiles(display_name)').order('created_at', { ascending: false });
+      if (!data) return;
+      DOMElements.notesContainer.innerHTML = data.length > 0 ? data.map(note => {
+        const creatorName = note.profiles?.display_name?.split(' ')[0] || 'A user';
+        return `<div class="note-card">
+                  <p>${note.content}</p>
+                  <div class="timestamp">From ${creatorName}, ${formatTimeAgo(note.created_at)}</div>
+                </div>`;
+      }).join('') : '<p>No notes yet. Add one soon!</p>';
+    },
+    timeline: async () => {
+      const { data } = await supabase.from('timeline').select('*, profiles(display_name)').order('event_date', { ascending: true });
+      if (!data) return;
+      DOMElements.timelineContainer.innerHTML = data.length > 0 ? data.map(event => {
+        const creatorName = event.profiles?.display_name?.split(' ')[0] || 'A user';
+        return `<div class="timeline-item">
+                  <div class="timeline-dot"></div>
+                  <div class="timeline-content">
+                    <div class="timeline-date">${new Date(event.event_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                    <h3>${event.title}</h3>
+                    <p>${event.description}</p>
+                    <div class="timestamp">Added by ${creatorName} ${formatTimeAgo(event.created_at)}</div>
+                  </div>
+                </div>`;
+      }).join('') : '<p>Our story is just beginning...</p>';
+    },
+    favorites: async () => {
+      const { data } = await supabase.from('favorites').select('*, profiles(display_name)').order('created_at', { ascending: false });
+      if (!data) return;
+      DOMElements.favoritesList.innerHTML = data.length > 0 ? data.map(fav => {
+        const creatorName = fav.profiles?.display_name?.split(' ')[0] || 'A user';
+        return `<li><span class="heart-icon">♥</span>${fav.item} <span class="timestamp">(Added by ${creatorName} ${formatTimeAgo(fav.created_at)})</span></li>`;
+      }).join('') : '<p>No favorites listed yet.</p>';
     }
-    if (notesContainer) notesContainer.innerHTML = data.map(note => `<div class="note-card"><h3>A Note</h3><p>${note.content}</p></div>`).join('');
+  };
+
+  // --- New Content Submission Logic ---
+  async function handleContentSubmission(event) {
+    const target = event.target;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return; // Should not happen if form is visible, but a good safeguard
+
+    let data, table, loader, fieldsToClear;
+
+    if (target.id === 'submit-note-button') {
+      const content = document.getElementById('new-note-text').value.trim();
+      if (!content) return alert('Please write a note before adding.');
+      data = { content, user_id: user.id };
+      table = 'notes';
+      loader = contentLoaders.notes;
+      fieldsToClear = ['new-note-text'];
+    } else if (target.id === 'submit-timeline-button') {
+      const event_date = document.getElementById('new-timeline-date').value;
+      const title = document.getElementById('new-timeline-title').value.trim();
+      const description = document.getElementById('new-timeline-desc').value.trim();
+      if (!event_date || !title) return alert('Please provide at least a date and a title for the event.');
+      data = { event_date, title, description, user_id: user.id };
+      table = 'timeline';
+      loader = contentLoaders.timeline;
+      fieldsToClear = ['new-timeline-date', 'new-timeline-title', 'new-timeline-desc'];
+    } else if (target.id === 'submit-favorite-button') {
+      const item = document.getElementById('new-favorite-text').value.trim();
+      if (!item) return alert('Please enter a favorite thing.');
+      data = { item, user_id: user.id };
+      table = 'favorites';
+      loader = contentLoaders.favorites;
+      fieldsToClear = ['new-favorite-text'];
+    } else {
+      return; // Not a content submission button
+    }
+
+    const { error } = await supabase.from(table).insert([data]);
+    if (error) return alert(`Error adding item: ${error.message}`);
+    fieldsToClear.forEach(id => document.getElementById(id).value = '');
+    await loader(); // Refresh the content
   }
 
-  async function loadTimeline() {
-    const { data, error } = await supabase.from('timeline').select('*').order('event_date', { ascending: true });
-    if (error) {
-      console.error('Error loading timeline:', error);
-      return;
-    }
-    if (timelineContainer) timelineContainer.innerHTML = data.map(event => `
-      <div class="timeline-item">
-        <div class="timeline-dot"></div>
-        <div class="timeline-content">
-          <div class="timeline-date">${new Date(event.event_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
-          <h3>${event.title}</h3>
-          <p>${event.description}</p>
-        </div>
-      </div>
-    `).join('');
-  }
+  // --- Event Delegation ---
+  document.addEventListener('click', async (event) => {
+    const target = event.target;
+    const id = target.id;
 
-  async function loadFavorites() {
-    const { data, error } = await supabase.from('favorites').select('item');
-    if (error) {
-      console.error('Error loading favorites:', error);
-      return;
+    if (target.closest('.menu-toggle')) {
+        DOMElements.menuToggle.classList.toggle('active');
+        DOMElements.navLinks.classList.toggle('active');
     }
-    if (favoritesList) favoritesList.innerHTML = data.map(fav => `<li><span class="heart-icon">♥</span>${fav.item}</li>`).join('');
-  }
+    if (target.closest('.nav-links a')) {
+        DOMElements.menuToggle.classList.remove('active');
+        DOMElements.navLinks.classList.remove('active');
+    }
 
-  // --- Smooth Scroll Animation ---
-  // This makes the sections visible as you scroll down the page.
-  const sections = document.querySelectorAll('.content-section');
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, {
-    threshold: 0.1 // The section becomes visible when 10% is in view
+    // Location
+    if (id === 'add-location-button') startLocationSharing();
+    if (id === 'stop-location-button') stopLocationSharing();
+    if (target.classList.contains('route-button')) {
+      drawRoute([target.dataset.lat, target.dataset.lng], target.dataset.mode);
+      if (state.map) state.map.closePopup();
+    }
+
+    // Modals
+    if (target.closest('#open-upload-modal-button')) DOMElements.uploadModal.style.display = 'flex';
+    if (target.closest('.close-button') || target === DOMElements.uploadModal) DOMElements.uploadModal.style.display = 'none';
+    if (target.closest('.close-button') || target === DOMElements.loginModal) DOMElements.loginModal.style.display = 'none';
+    if (id === 'google-login-button') supabase.auth.signInWithOAuth({ provider: 'google' });
+    if (id === 'github-login-button') supabase.auth.signInWithOAuth({ provider: 'github' });
+
+    if (target.matches('.gallery-item img')) {
+      DOMElements.imageViewerModal.style.display = 'flex';
+      document.getElementById('fullscreen-image').src = target.src;
+    }
+    if (target.closest('.close-viewer-button') || target === DOMElements.imageViewerModal) DOMElements.imageViewerModal.style.display = 'none';
+
+    // Gallery
+    const deleteBtn = target.closest('.delete-photo-button');
+    if (deleteBtn && confirm('Are you sure you want to delete this photo?')) {
+      await deletePhoto(deleteBtn.dataset.imageId);
+    }
+
+    // Handle content submissions
+    handleContentSubmission(event);
+
   });
 
-  sections.forEach(section => observer.observe(section));
+  document.getElementById('icon-upload')?.addEventListener('change', (e) => handleIconUpload(e.target.files[0]));
 
-  // --- Initial Data Load Function ---
-  // This function loads all content that is visible to everyone.
-  function loadAllContent() {
+  // --- App Initialization ---
+  function init() {
+    // Load all public content
     loadGallery();
-    // setupDeleteFunctionality(); // This is now called from onAuthStateChange
-    loadNotes();
-    loadTimeline();
-    loadFavorites();
+    Object.values(contentLoaders).forEach(loader => loader());
+
+    // Initialize map for everyone
+    if (document.getElementById('map')) {
+      initializeMap();
+      loadInitialLocations();
+    }
+
+    // Set up scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.content-section').forEach(section => observer.observe(section));
   }
 
-  // Load all public content as soon as the DOM is ready.
-  loadAllContent();
-
+  supabase.auth.onAuthStateChange((event, session) => {
+    updateUIForAuthState(session?.user);
+    // Reload gallery on auth change to show/hide delete buttons
+    loadGallery();
+  });
+  init();
 });

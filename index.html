@@ -15,20 +15,24 @@
 
     <!-- Leaflet.js for Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+
+    <!-- Leaflet Routing Machine for route planning -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
 </head>
 <body>
 
     <header>
         <nav>
-            <ul>
+            <div class="menu-toggle"></div>
+            <ul class="nav-links">
                 <li><a href="#about">About You</a></li>
                 <li><a href="#gallery">Gallery</a></li>
                 <li><a href="#notes">Love Notes</a></li>
                 <li><a href="#timeline">Our Story</a></li>
                 <li><a href="#location">Our Map</a></li>
-            </ul>
-            <ul id="auth-container">
-                <!-- Login/Logout button will appear here -->
+                <li class="user-only"><a href="work.html">Work</a></li>
+                <!-- Auth button is now part of the main nav list for better layout -->
+                <li id="auth-container"><a href="#" id="login-button" class="cta-button">Login</a></li>
             </ul>
         </nav>
     </header>
@@ -37,7 +41,7 @@
         <!-- Hero Section -->
         <section id="hero">
             <div class="hero-content">
-                <h1>For My Lovey, Jolyn</h1>
+                <h1>For My Loveys, Jolyn</h1>
                 <p>A little corner of the internet dedicated to you.</p>
             </div>
         </section>
@@ -61,8 +65,8 @@
             <div class="gallery-grid">
                 <!-- Photo gallery will be loaded here by JavaScript -->
             </div>
-            <!-- New Gallery Upload Form -->
-            <div class="upload-button-container">
+            <!-- Gallery Upload Button (user-only) -->
+            <div class="upload-button-container user-only">
                 <button id="open-upload-modal-button" class="cta-button">+ Add Moment</button>
             </div>
         </section>
@@ -73,6 +77,11 @@
             <div class="notes-container">
                 <!-- Love notes will be loaded here by JavaScript -->
             </div>
+            <!-- New Note Form (user-only) -->
+            <div id="add-note-form" class="add-form user-only">
+                <textarea id="new-note-text" placeholder="Write a new love note..."></textarea>
+                <button id="submit-note-button" class="cta-button small">Add Note</button>
+            </div>
         </section>
 
         <!-- Relationship Timeline Section -->
@@ -80,6 +89,13 @@
             <h2 class="section-title">Our Story So Far</h2>
             <div class="timeline-container">
                 <!-- Timeline events will be loaded here by JavaScript -->
+            </div>
+            <!-- New Timeline Event Form (user-only) -->
+            <div id="add-timeline-form" class="add-form user-only">
+                <input type="date" id="new-timeline-date">
+                <input type="text" id="new-timeline-title" placeholder="Event Title (e.g., Our First Date)">
+                <textarea id="new-timeline-desc" placeholder="A short description of the memory..."></textarea>
+                <button id="submit-timeline-button" class="cta-button small">Add Event</button>
             </div>
         </section>
 
@@ -89,27 +105,43 @@
             <ul class="favorites-list">
                 <!-- Favorites will be loaded here by JavaScript -->
             </ul>
+            <!-- New Favorite Form (user-only) -->
+            <div id="add-favorite-form" class="add-form user-only">
+                <input type="text" id="new-favorite-text" placeholder="Add a new favorite thing...">
+                <button id="submit-favorite-button" class="cta-button small">Add Favorite</button>
+            </div>
         </section>
 
         <!-- Live Location Section -->
         <section id="location" class="content-section">
             <h2 class="section-title">Our Live Map</h2>
-            <div id="location-controls" style="text-align: center;">
-                <button id="add-location-button" class="cta-button" style="margin-right: 10px;">Add Live Location</button>
-                <button id="stop-location-button" class="cta-button" style="display: none; background-color: #ff6b6b;">Stop Sharing</button>
-                <div id="user-profile-area" style="display: none; margin-top: 20px;">
-                    <p>Welcome, <span id="user-name"></span>!</p>
-                    <img id="user-icon" src="https://via.placeholder.com/50" alt="Your Icon" style="width: 50px; height: 50px; border-radius: 50%;"/>
-                    <p>Update your profile icon:</p>
-                    <input type="file" id="icon-upload" accept="image/*">
-                    <button id="upload-button">Upload</button>
-                    <p id="upload-status"></p>
+            <div class="map-container">
+                <div id="map">
+                    <!-- The map will be loaded here -->
+                </div>
+                <div id="route-info-box" style="display: none;">
+                    <p>ETA: <strong id="route-eta"></strong> (<span id="route-distance"></span>)</p>
+                </div>
+                <div id="location-controls" class="user-only">
+                    <div id="user-profile-area">
+                        <img id="user-icon" src="https://via.placeholder.com/50" alt="Your Icon" class="profile-icon"/>
+                        <div class="profile-info">
+                            <p>Welcome, <span id="user-name"></span>!</p>
+                            <label for="icon-upload" class="file-input-label small">Change Icon &rarr;</label>
+                            <input type="file" id="icon-upload" accept="image/*" style="display: none;">
+                            <p id="upload-status"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="location-notice-container">
+                    <p id="location-notice-text" class="location-notice"></p>
+                </div>
+                <div class="location-buttons">
+                    <button id="add-location-button" class="cta-button">Share Live Location</button>
+                    <button id="stop-location-button" class="cta-button danger">Stop Sharing</button>
                 </div>
             </div>
-            <div id="map">
-                <!-- The map will be loaded here -->
-            </div>
-            <p class="location-notice">Login to start sharing your location and see our map!</p>
+            <p class="location-notice guest-only">Login to start sharing your location and see our map!</p>
         </section>
 
         <!-- Closing Message Section -->
@@ -126,7 +158,7 @@
     </main>
 
     <footer>
-        <p>Made withs ❤️ for the one and only Jolyn.</p>
+        <p>Made with ❤️ for the one and only Jolyn.</p>
     </footer>
 
     <!-- Upload Modal (Moved here to fix layout issues) -->
@@ -137,8 +169,8 @@
             <div id="image-preview-container" style="display: none;">
                 <img id="image-preview" src="#" alt="Image preview"/>
             </div>
-            <label for="gallery-upload-file" class="file-input-label">Choose a Photo</label>
-            <input type="file" id="gallery-upload-file" accept="image/*" style="display: none;">
+            <label for="gallery-file-input" class="file-input-label">Choose a Photo</label>
+            <input type="file" id="gallery-file-input" accept="image/*" style="display: none;">
             <button id="gallery-upload-button" class="cta-button">Upload Photo</button>
         </div>
     </div>
@@ -149,10 +181,32 @@
         <img class="modal-image-content" id="fullscreen-image">
     </div>
 
+    <!-- Login Options Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Choose Your Login</h2>
+            <p>Select a provider to continue.</p>
+            <div class="login-options-container">
+                <button id="google-login-button" class="cta-button provider-button">Login with Google</button>
+                <button id="github-login-button" class="cta-button provider-button">Login with GitHub</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+    <!-- Leaflet.js (MUST be loaded before plugins) -->
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- Google Maps API (loaded asynchronously for performance) -->
+    <!-- Note: Ad blockers might cause 'net::ERR_BLOCKED_BY_CLIENT' errors with this script. This is a client-side issue. -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCWKNVv3DGZZF2zLHxOx_KfjE__SKw1sXo" async></script>
+
+    <!-- Leaflet Plugins (loaded AFTER Leaflet.js) -->
+    <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
 
     <script>
       // --- Supabase Configuration & Initialization ---
@@ -162,5 +216,6 @@
     </script>
 
     <script src="script.js"></script>
+
 </body>
 </html>

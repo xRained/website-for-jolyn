@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Her Work Hub - For My Lovey, Jolyn</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="work-page-body user-only">
+
+    <header>
+        <nav>
+            <!-- A simplified nav for the work page -->
+            <a href="index.html" class="work-page-home-link">← Back to Main Site</a>
+            <div id="auth-container-work">
+                <!-- Auth button will be loaded here -->
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="work-hub" class="content-section">
+            <div class="dashboard-header">
+                <h1>Jolyn mabantot</h1>
+                <p>Your dedicated space to organize, plan, and conquer.</p>
+            </div>
+
+            <div class="dashboard-container">
+                <div class="dashboard-nav">
+                    <button class="dashboard-tab-button active" data-tab="tab-calendar">Calendar</button>
+                    <button class="dashboard-tab-button" data-tab="tab-tasks">Task List</button>
+                    <button class="dashboard-tab-button" data-tab="tab-notes">Work Notes</button>
+                    <button class="dashboard-tab-button" data-tab="tab-finance">Financials</button>
+                    <button class="dashboard-tab-button" data-tab="tab-docs">Documents</button>
+                </div>
+
+                <div class="dashboard-content">
+                    <!-- Tasks Tab -->
+                    <div id="tab-tasks" class="dashboard-tab-content">
+                        <div class="tab-header">
+                            <h2>Task Manager</h2>
+                        </div>
+                        <form id="add-task-form" class="add-form">
+                            <input type="text" id="new-task-content" placeholder="What's the next task to accomplish?" required>
+                            <div class="form-row">
+                                <select id="new-task-priority" title="Set Priority">
+                                    <option value="Low">Low Priority</option>
+                                    <option value="Medium" selected>Medium Priority</option>
+                                    <option value="High">High Priority</option>
+                                </select>
+                                <input type="date" id="new-task-due-date" title="Due Date">
+                                <input type="text" id="new-task-category" placeholder="Category (e.g., Work)">
+                            </div>
+                            <button id="submit-task-button" type="submit" class="cta-button small">Add Task</button>
+                        </form>
+                        <div class="task-dashboard">
+                            <div class="task-column">
+                                <div class="task-column-header"><h3>📌 Pinned</h3></div>
+                                <div id="pinned-tasks-container" class="task-list"></div>
+                            </div>
+                            <div class="task-column">
+                                <div class="task-column-header">
+                                    <h3>⏳ To Do</h3>
+                                    <div class="sort-controls">
+                                        <label for="sort-tasks">Sort by:</label>
+                                        <select id="sort-tasks">
+                                            <option value="created_at">Newest</option>
+                                            <option value="priority">Priority</option>
+                                            <option value="due_date">Due Date</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="pending-tasks-container" class="task-list"></div>
+                            </div>
+                            <div class="task-column">
+                                <div class="task-column-header"><h3>✅ Completed</h3></div>
+                                <div id="completed-tasks-container" class="task-list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Calendar Tab -->
+                    <div id="tab-calendar" class="dashboard-tab-content active full-size-calendar">
+                        <div class="tab-header"><h2>Calendar</h2></div>
+                        <!-- This div will be targeted by JavaScript to render the calendar -->
+                        <div id="calendar"></div>
+                    </div>
+
+                    <!-- Work Notes Tab -->
+                    <div id="tab-notes" class="dashboard-tab-content">
+                        <div class="tab-header"><h2>Work Notes</h2></div>
+                        <form id="add-note-form" class="add-form"><input type="text" id="new-note-title" placeholder="Note Title" required><textarea id="new-note-content" placeholder="Type your note here..." required></textarea><button id="submit-note-button" type="submit" class="cta-button small">Save Note</button></form>
+                        <div id="notes-list-container" class="notes-list"></div>
+                    </div>
+
+                    <!-- Financials Tab -->
+                    <div id="tab-finance" class="dashboard-tab-content">
+                        <div class="tab-header"><h2>Financial Reminders</h2></div>
+                        <form id="add-reminder-form" class="add-form"><input type="text" id="new-reminder-content" placeholder="e.g., Pay electricity bill" required><input type="date" id="new-reminder-due-date" title="Due Date" required><button id="submit-reminder-button" type="submit" class="cta-button small">Add Reminder</button></form>
+                        <div id="reminders-list-container"></div>
+                    </div>
+
+                    <!-- Documents Tab -->
+                    <div id="tab-docs" class="dashboard-tab-content">
+                        <div class="tab-header"><h2>Important Documents</h2></div>
+                        <form id="add-doc-form" class="add-form">
+                            <input type="text" id="new-doc-name" placeholder="Document Name (e.g., 'Contract Q4')" required>
+                            <input type="file" id="doc-file-input" required>
+                            <button id="submit-doc-button" type="submit" class="cta-button small">Upload Document</button>
+                        </form>
+                        <div id="docs-list-container"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Event Modal -->
+    <div id="event-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="event-modal-title">Add Event</h2>
+            <form id="event-form">
+                <input type="hidden" id="event-id">
+                <input type="text" id="event-title" placeholder="Event Title" required>
+                <label for="event-start">Start Time</label>
+                <input type="datetime-local" id="event-start" required>
+                <label for="event-end">End Time</label>
+                <input type="datetime-local" id="event-end">
+                <div class="form-checkbox"><input type="checkbox" id="event-all-day"><label for="event-all-day">All day</label></div>
+                <label for="event-color">Color Tag</label>
+                <div class="form-row">
+                    <select id="event-priority" title="Set Priority">
+                        <option value="Low">Low Priority</option>
+                        <option value="Medium" selected>Medium Priority</option>
+                        <option value="High">High Priority</option>
+                    </select>
+                    <input type="text" id="event-category" placeholder="Category">
+                </div>
+                <label for="event-color">Color Tag</label>
+                <select id="event-color">
+                    <option value="#f4acb7">Pink (Default)</option>
+                    <option value="#a2d2ff">Blue</option>
+                    <option value="#b5e48c">Green</option>
+                    <option value="#fbc02d">Yellow</option>
+                </select>
+                <div class="modal-actions">
+                    <button type="submit" id="save-event-button" class="cta-button">Save Event</button>
+                    <button type="button" id="complete-event-button" class="cta-button" style="display: none;">Mark as Complete</button>
+                    <button type="button" id="delete-event-button" class="cta-button danger" style="display: none;">Delete Event</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task Detail Modal -->
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="task-modal-title">Task Details</h2>
+            <form id="task-form">
+                <input type="hidden" id="task-id">
+                <textarea id="task-modal-content" placeholder="Task Content" required></textarea>
+                <label for="task-modal-priority">Priority</label>
+                <select id="task-modal-priority">
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                </select>
+                <label for="task-modal-due-date">Due Date</label>
+                <input type="date" id="task-modal-due-date">
+                <div class="modal-actions">
+                    <button type="submit" id="save-task-button" class="cta-button">Save Changes</button>
+                    <button type="button" id="delete-task-button" class="cta-button danger">Delete Task</button>
+                    <button type="button" id="complete-task-button" class="cta-button">Mark as Complete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+      const SUPABASE_CONFIG = { URL: "https://apolwnnlwkotsbxpubbv.supabase.co", ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwb2x3bm5sd2tvdHNieHB1YmJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDUzODQsImV4cCI6MjA3OTk4MTM4NH0.F5qZRmmwi0ylBuhBMeY1FPfyYcswm32dGHXtiALu9lE" }; // Replace with your actual Supabase credentials
+      window.supabaseClient = supabase.createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY);
+    </script>
+    <!-- FullCalendar Library -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js'></script>
+    <script src="work.js"></script>
+</body>
+</html>
