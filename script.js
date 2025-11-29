@@ -11,29 +11,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // --- Element Selectors ---
   const authContainer = document.getElementById('auth-container');
-  const userProfileArea = document.getElementById('user-profile-area');
-  const addLocationButton = document.getElementById('add-location-button');
-  const locationNotice = document.querySelector('.location-notice');
-  const iconUploadInput = document.getElementById('icon-upload');
-  const uploadButton = document.getElementById('upload-button');
-  const galleryUploadButton = document.getElementById('gallery-upload-button');
-  const galleryGrid = document.querySelector('.gallery-grid');
-  const modal = document.getElementById('upload-modal');
-  const notesContainer = document.querySelector('.notes-container');
-  const timelineContainer = document.querySelector('.timeline-container');
-  const favoritesList = document.querySelector('.favorites-list');
-  const openModalButton = document.getElementById('open-upload-modal-button');
-  const closeModalButton = document.querySelector('.close-button');
-  const galleryFileInput = document.getElementById('gallery-upload-file');
-  const imagePreviewContainer = document.getElementById('image-preview-container');
-  const imagePreview = document.getElementById('image-preview');
-  const imageViewerModal = document.getElementById('image-viewer-modal');
-  const fullscreenImage = document.getElementById('fullscreen-image');
-  const closeViewerButton = document.querySelector('.close-viewer-button');
+  const userProfileArea = document.getElementById('user-profile-area'); // Can be null if map section is removed
+  const addLocationButton = document.getElementById('add-location-button'); // Can be null
+  const locationNotice = document.querySelector('.location-notice'); // Can be null
+  const iconUploadInput = document.getElementById('icon-upload'); // Can be null
+  const uploadButton = document.getElementById('upload-button'); // Can be null
+  const galleryUploadButton = document.getElementById('gallery-upload-button'); // In modal
+  const galleryGrid = document.querySelector('.gallery-grid'); // In gallery section
+  const modal = document.getElementById('upload-modal'); // For gallery uploads
+  const notesContainer = document.querySelector('.notes-container'); // In notes section
+  const stopLocationButton = document.getElementById('stop-location-button'); // Can be null
+  const timelineContainer = document.querySelector('.timeline-container'); // In timeline section
+  const favoritesList = document.querySelector('.favorites-list'); // In favorites section
+  const openModalButton = document.getElementById('open-upload-modal-button'); // In gallery section
+  const closeModalButton = document.querySelector('.close-button'); // In modal
+  const galleryFileInput = document.getElementById('gallery-upload-file'); // In modal
+  const imagePreviewContainer = document.getElementById('image-preview-container'); // In modal
+  const imagePreview = document.getElementById('image-preview'); // In modal
+  const imageViewerModal = document.getElementById('image-viewer-modal'); // For viewing images
+  const fullscreenImage = document.getElementById('fullscreen-image'); // In viewer modal
+  const closeViewerButton = document.querySelector('.close-viewer-button'); // In viewer modal
 
   // --- Map Variables ---
   let map = null;
   let userMarkers = {}; // To keep track of markers on the map
+  let locationWatchId = null; // To store the ID of the location watcher
 
   // --- Authentication ---
   supabase.auth.onAuthStateChange(async (event, session) => {
@@ -44,24 +46,21 @@ document.addEventListener('DOMContentLoaded', function() {
       authContainer.innerHTML = `<li><a href="#" id="logout-button">Logout</a></li>`;
       document.getElementById('logout-button').addEventListener('click', async () => {
         if (confirm('Are you sure you want to log out?')) {
+          document.body.innerHTML = '<h1 style="text-align: center; margin-top: 50px; font-family: sans-serif; color: #5C5470;">Logging out...</h1>';
           await supabase.auth.signOut();
-          location.reload(); // Reload the page to reset state
+          // The onAuthStateChange listener will handle the UI update, but a reload is a safe fallback.
+          location.reload();
         }
       });
 
       // Show user-specific UI
-      addLocationButton.style.display = 'block';
-      locationNotice.style.display = 'none';
+      // Check if these elements exist before manipulating them
+      if (addLocationButton) addLocationButton.style.display = 'block';
+      if (locationNotice) locationNotice.style.display = 'none';
+      if (openModalButton) openModalButton.style.display = 'block'; // Show the "Add Moment" button
 
-      document.getElementById('user-name').textContent = user.user_metadata.full_name;
-
-      const profile = await getProfile(user.id);
-      document.getElementById('user-icon').src = profile?.icon_url || 'https://via.placeholder.com/50';
-
-      initializeMap();
-      await loadInitialLocations(); // Load existing locations first
-      startLocationSharing(user, profile);
-      listenForUserLocations();
+      // Set up delete functionality now that we know a user is logged in
+      setupDeleteFunctionality();
 
     } else { // User is logged out
       console.log('User signed out.');
@@ -71,14 +70,18 @@ document.addEventListener('DOMContentLoaded', function() {
       });
 
       // Hide user-specific UI
-      addLocationButton.style.display = 'none';
-      locationNotice.style.display = 'block';
+      if (addLocationButton) addLocationButton.style.display = 'none';
+      if (locationNotice) locationNotice.style.display = 'block';
+      if (openModalButton) openModalButton.style.display = 'none'; // Hide the "Add Moment" button
+      if (stopLocationButton) stopLocationButton.style.display = 'none';
       if (map) { map.remove(); map = null; }
     }
   });
 
   // --- Profile Management ---
-  uploadButton.addEventListener('click', async () => {
+  // Check if uploadButton exists before adding listener
+  if (uploadButton) {
+    uploadButton.addEventListener('click', async () => {
     const { data: { user } } = await supabase.auth.getUser();
     const file = iconUploadInput.files[0];
     if (!user || !file) return;
@@ -110,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
       statusElem.textContent = 'Upload failed.';
     }
   });
+  }
 
   async function getProfile(userId) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -157,13 +161,37 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // New: Event listener for the "Add Live Location" button
-  addLocationButton.addEventListener('click', () => {
-    userProfileArea.style.display = 'block'; // Show the upload/sharing area
-    addLocationButton.style.display = 'none'; // Hide the button itself
+  // Check if button exists before adding listener
+  if (addLocationButton) {
+    addLocationButton.addEventListener('click', async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("Please log in to use the live map feature.");
+      return;
+    }
+
+    userProfileArea.style.display = 'block'; // Show the profile area
+    addLocationButton.style.display = 'none'; // Hide the 'Add' button
+    if (stopLocationButton) {
+      stopLocationButton.style.display = 'inline-block'; // Show the 'Stop' button
+    }
+    // Now, initialize the map and user profile info
+    document.getElementById('user-name').textContent = user.user_metadata.full_name;
+    const profile = await getProfile(user.id);
+    document.getElementById('user-icon').src = profile?.icon_url || 'https://via.placeholder.com/50';
+    initializeMap();
+    await loadInitialLocations();
+    startLocationSharing(user, profile);
+    listenForUserLocations();
   });
+  }
 
   function startLocationSharing(user, profile) {
-    navigator.geolocation.watchPosition(async (position) => {
+    // If we are already watching, clear the old watch first.
+    if (locationWatchId) {
+      navigator.geolocation.clearWatch(locationWatchId);
+    }
+    locationWatchId = navigator.geolocation.watchPosition(async (position) => {
       const { latitude, longitude } = position.coords;
       console.log('Updating location:', latitude, longitude);
       await supabase.from('locations').upsert({
@@ -176,7 +204,25 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }, error => {
       console.error("Geolocation error:", error);
+      alert("Location access was denied. Your live location will not be shared on the map.");
     }, { enableHighAccuracy: true });
+  }
+
+  // New: Event listener for the "Stop Sharing" button
+  if (stopLocationButton) {
+    stopLocationButton.addEventListener('click', () => {
+      if (locationWatchId) {
+        navigator.geolocation.clearWatch(locationWatchId);
+        locationWatchId = null;
+        console.log('Stopped sharing location.');
+        alert('You have stopped sharing your live location.');
+      }
+      // Reset UI
+      stopLocationButton.style.display = 'none';
+      if (addLocationButton) {
+        addLocationButton.style.display = 'inline-block';
+      }
+    });
   }
 
   // Listen for real-time location changes
@@ -226,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    galleryGrid.innerHTML = ''; // Clear existing gallery
+    if (galleryGrid) galleryGrid.innerHTML = ''; // Clear existing gallery
     data.forEach(image => {
       const itemDiv = document.createElement('div');
       itemDiv.className = 'gallery-item';
@@ -245,12 +291,14 @@ document.addEventListener('DOMContentLoaded', function() {
         itemDiv.appendChild(deleteButton);
       }
 
-      galleryGrid.appendChild(itemDiv);
+      if (galleryGrid) galleryGrid.appendChild(itemDiv);
     });
   }
 
   // --- Image Viewer Logic ---
-  galleryGrid.addEventListener('click', (event) => {
+  // Check if galleryGrid exists before adding listener
+  if (galleryGrid) {
+    galleryGrid.addEventListener('click', (event) => {
     // Check if an image inside the gallery was clicked (but not the delete button)
     if (event.target.tagName === 'IMG') {
       imageViewerModal.style.display = 'flex'; // Use flex for centering
@@ -258,6 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  }
   function closeImageViewer() {
     imageViewerModal.style.display = 'none';
   }
@@ -266,14 +315,19 @@ document.addEventListener('DOMContentLoaded', function() {
   imageViewerModal.addEventListener('click', (event) => { if (event.target === imageViewerModal) closeImageViewer(); });
 
   // Add a single event listener to the grid to handle all delete clicks
-  galleryGrid.addEventListener('click', async (event) => {
-    if (event.target.classList.contains('delete-photo-button')) {
-      const imageId = event.target.getAttribute('data-image-id');
-      if (confirm('Are you sure you want to delete this photo?')) {
-        await deletePhoto(imageId);
+  async function setupDeleteFunctionality() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session && galleryGrid) {
+      galleryGrid.addEventListener('click', async (event) => {
+      if (event.target.classList.contains('delete-photo-button')) {
+        const imageId = event.target.getAttribute('data-image-id');
+        if (confirm('Are you sure you want to delete this photo?')) {
+          await deletePhoto(imageId);
+        }
       }
+    });
     }
-  });
+  }
 
   async function deletePhoto(imageId) {
     try {
@@ -285,11 +339,18 @@ document.addEventListener('DOMContentLoaded', function() {
       // 1. Get image URL from DB to find the file path
       const { data: image, error: fetchError } = await supabase.from('gallery').select('url').eq('id', imageId).single();
       if (fetchError) throw fetchError;
+      if (!image || !image.url) throw new Error("Image record or URL not found in database.");
 
-      const filePath = new URL(image.url).pathname.split(`/media/`)[1];
+      // --- ROBUST FIX: Safely extract the file path from the URL ---
+      const urlPath = new URL(image.url).pathname;
+      const pathParts = urlPath.split('/media/');
+      if (pathParts.length < 2) {
+        throw new Error("Could not determine the file path from the URL for deletion.");
+      }
+      const filePath = pathParts[1];
 
       // 2. Delete from the 'gallery' database table first
-      const { error: dbError } = await supabase.from('gallery').delete().eq('id', imageId);
+      const { error: dbError } = await supabase.from('gallery').delete().match({ id: imageId });
       if (dbError) throw dbError;
 
       // 3. Delete from Supabase Storage
@@ -297,6 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (storageError) throw storageError;
 
       console.log('Photo deleted successfully');
+      alert('Photo deleted successfully!'); // Add success pop-up
       loadGallery(); // Refresh the gallery to show the change
     } catch (error) {
       console.error('Error deleting photo:', error);
@@ -305,9 +367,11 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // --- Modal Logic ---
-  openModalButton.addEventListener('click', () => {
+  if (openModalButton) {
+    openModalButton.addEventListener('click', () => {
     modal.style.display = 'block';
   });
+  }
 
   closeModalButton.addEventListener('click', () => {
     modal.style.display = 'none';
@@ -350,7 +414,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
       if (uploadError) throw uploadError;
-
+      
       const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
 
       const { error: dbError } = await supabase.from('gallery').insert({ url: publicUrl }).select();
@@ -378,7 +442,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading notes:', error);
       return;
     }
-    notesContainer.innerHTML = data.map(note => `<div class="note-card"><h3>A Note</h3><p>${note.content}</p></div>`).join('');
+    if (notesContainer) notesContainer.innerHTML = data.map(note => `<div class="note-card"><h3>A Note</h3><p>${note.content}</p></div>`).join('');
   }
 
   async function loadTimeline() {
@@ -387,7 +451,7 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading timeline:', error);
       return;
     }
-    timelineContainer.innerHTML = data.map(event => `
+    if (timelineContainer) timelineContainer.innerHTML = data.map(event => `
       <div class="timeline-item">
         <div class="timeline-dot"></div>
         <div class="timeline-content">
@@ -405,18 +469,8 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading favorites:', error);
       return;
     }
-    favoritesList.innerHTML = data.map(fav => `<li><span class="heart-icon">♥</span>${fav.item}</li>`).join('');
+    if (favoritesList) favoritesList.innerHTML = data.map(fav => `<li><span class="heart-icon">♥</span>${fav.item}</li>`).join('');
   }
-
-  // --- Wait for the entire page to load before running animations and content loading ---
-  // --- Initial Data Load ---
-  function loadAllContent() {
-    loadGallery();
-    loadNotes();
-    loadTimeline();
-    loadFavorites();
-  }
-  loadAllContent();
 
   // --- Smooth Scroll Animation ---
   // This makes the sections visible as you scroll down the page.
@@ -433,4 +487,18 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   sections.forEach(section => observer.observe(section));
+
+  // --- Initial Data Load Function ---
+  // This function loads all content that is visible to everyone.
+  function loadAllContent() {
+    loadGallery();
+    // setupDeleteFunctionality(); // This is now called from onAuthStateChange
+    loadNotes();
+    loadTimeline();
+    loadFavorites();
+  }
+
+  // Load all public content as soon as the DOM is ready.
+  loadAllContent();
+
 });

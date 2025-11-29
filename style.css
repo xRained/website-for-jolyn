@@ -93,6 +93,18 @@ nav ul li a:hover {
     color: var(--accent-pink);
 }
 
+/* Style for the login button to make it stand out */
+#login-button {
+    background-color: var(--accent-pink);
+    color: var(--white) !important;
+    padding: 8px 15px;
+    border-radius: 20px;
+    transition: background-color 0.3s ease;
+}
+#login-button:hover {
+    background-color: #ffabb9;
+}
+
 /* --- Hero Section --- */
 #hero {
     display: flex;
@@ -202,6 +214,10 @@ nav ul li a:hover {
 }
 .cta-button:hover {
     background-color: #ffabb9; /* A slightly darker pink */
+}
+/* Hide the upload button by default, JS will show it for logged-in users */
+#open-upload-modal-button {
+    display: none;
 }
 
 /* --- Love Notes Section --- */
@@ -474,12 +490,14 @@ footer {
         text-align: center;
     }
     .timeline-container::after {
-        left: 31px;
+        /* On mobile, move the timeline bar to the left */
+        left: 20px;
     }
     .timeline-item {
         width: 100%;
-        padding-left: 70px;
-        padding-right: 25px;
+        /* Adjust padding for single-column layout */
+        padding-left: 50px;
+        padding-right: 15px;
     }
     .timeline-item:nth-child(odd),
     .timeline-item:nth-child(even) {
@@ -488,6 +506,7 @@ footer {
     }
     .timeline-item:nth-child(odd) .timeline-dot,
     .timeline-item:nth-child(even) .timeline-dot {
-        left: 11px;
+        /* Position the dot over the new bar position */
+        left: 10px;
     }
 }

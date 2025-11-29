@@ -95,7 +95,8 @@
         <section id="location" class="content-section">
             <h2 class="section-title">Our Live Map</h2>
             <div id="location-controls" style="text-align: center;">
-                <button id="add-location-button" class="cta-button">Add Live Location</button>
+                <button id="add-location-button" class="cta-button" style="margin-right: 10px;">Add Live Location</button>
+                <button id="stop-location-button" class="cta-button" style="display: none; background-color: #ff6b6b;">Stop Sharing</button>
                 <div id="user-profile-area" style="display: none; margin-top: 20px;">
                     <p>Welcome, <span id="user-name"></span>!</p>
                     <img id="user-icon" src="https://via.placeholder.com/50" alt="Your Icon" style="width: 50px; height: 50px; border-radius: 50%;"/>
@@ -151,15 +152,14 @@
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+    <!-- Load Supabase config -->
+    <script src="config.js"></script>
+
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
     <script>
       // --- Supabase Initialization ---
-      // IMPORTANT: Replace with your actual Project URL and Anon Key from Supabase settings
-      const SUPABASE_URL = 'https://apolwnnlwkotsbxpubbv.supabase.co'; 
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwb2x3bm5sd2tvdHNieHB1YmJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDUzODQsImV4cCI6MjA3OTk4MTM4NH0.F5qZRmmwi0ylBuhBMeY1FPfyYcswm32dGHXtiALu9lE';
-
-      window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      window.supabaseClient = supabase.createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY);
     </script>
 
     <script src="script.js"></script>
