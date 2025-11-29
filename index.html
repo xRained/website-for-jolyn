@@ -126,7 +126,7 @@
     </main>
 
     <footer>
-        <p>Made with ❤️ for the one and only Jolyn.</p>
+        <p>Made withs ❤️ for the one and only Jolyn.</p>
     </footer>
 
     <!-- Upload Modal (Moved here to fix layout issues) -->
@@ -152,13 +152,12 @@
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <!-- Load Supabase config -->
-    <script src="config.js"></script>
-
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
     <script>
-      // --- Supabase Initialization ---
+      // --- Supabase Configuration & Initialization ---
+      // These are your public Supabase credentials
+      const SUPABASE_CONFIG = { URL: "https://apolwnnlwkotsbxpubbv.supabase.co", ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwb2x3bm5sd2tvdHNieHB1YmJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDUzODQsImV4cCI6MjA3OTk4MTM4NH0.F5qZRmmwi0ylBuhBMeY1FPfyYcswm32dGHXtiALu9lE" };
       window.supabaseClient = supabase.createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY);
     </script>
 
