@@ -30,6 +30,7 @@
                 <li><a href="#notes">Love Notes</a></li>
                 <li><a href="#timeline">Our Story</a></li>
                 <li><a href="#location">Our Map</a></li>
+                <li class="user-only"><a href="#sharing">Sharing</a></li>
                 <li class="user-only"><a href="work.html">Work</a></li>
                 <!-- Auth button is now part of the main nav list for better layout -->
                 <li id="auth-container"><a href="#" id="login-button" class="cta-button">Login</a></li>
@@ -142,6 +143,21 @@
                 </div>
             </div>
             <p class="location-notice guest-only">Login to start sharing your location and see our map!</p>
+        </section>
+
+        <!-- Sharing Section -->
+        <section id="sharing" class="content-section user-only">
+            <h2 class="section-title">Manage Access</h2>
+            <p class="section-subtitle">Invite others to view and collaborate on your Work Hub.</p>
+            <div class="sharing-container">
+                <form id="add-member-form" class="add-form">
+                    <input type="email" id="new-member-email" placeholder="Enter user's email to grant access" required>
+                    <button id="submit-member-button" type="submit" class="cta-button small">Invite User</button>
+                </form>
+                <h3>Users with Access</h3>
+                <p>These users can view and edit your content in the "Work" tab.</p>
+                <div id="members-list-container"></div>
+            </div>
         </section>
 
         <!-- Closing Message Section -->

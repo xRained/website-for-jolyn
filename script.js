@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     routingControl: null,
     userProfile: null,
     isStartingLocation: false, // Flag to prevent double-clicks
+    members: [],
     userCache: {}, // Cache for user names
   };
 
@@ -31,8 +32,14 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadModal: document.getElementById('upload-modal'),
     imageViewerModal: document.getElementById('image-viewer-modal'),
     loginModal: document.getElementById('login-modal'),
+    galleryFileInput: document.getElementById('gallery-file-input'),
+    imagePreviewContainer: document.getElementById('image-preview-container'),
+    imagePreview: document.getElementById('image-preview'),
     routeInfoBox: document.getElementById('route-info-box'),
     locationNotice: document.getElementById('location-notice-text'),
+    addMemberForm: document.getElementById('add-member-form'),
+    newMemberEmail: document.getElementById('new-member-email'),
+    membersListContainer: document.getElementById('members-list-container'),
     addLocationButton: document.getElementById('add-location-button'),
   };
 
@@ -114,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!window.locationChannel) {
         window.locationChannel = listenForUserLocations();
       }
+      await loadMembers(); // Load members for the sharing section
     } else {
       // --- LOGGED-OUT STATE ---
       console.log('User signed out.');
@@ -132,6 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       state.userProfile = null;
       stopLocationSharing();
+      renderMembers(); // Clear the members list
     }
   }
 
@@ -395,6 +404,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  async function handleGalleryUpload() {
+    const file = DOMElements.galleryFileInput.files[0];
+    if (!file) return alert('Please select a photo to upload.');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return alert('You must be logged in to upload photos.');
+
+    const uploadButton = document.getElementById('gallery-upload-button');
+    uploadButton.textContent = 'Uploading...';
+    uploadButton.disabled = true;
+
+    try {
+        const filePath = `gallery/${user.id}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('media').upload(filePath, file);
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
+        const { error: dbError } = await supabase.from('gallery').insert({ url: publicUrl, user_id: user.id });
+        if (dbError) throw dbError;
+
+        DOMElements.uploadModal.style.display = 'none';
+        await loadGallery(); // Refresh the gallery to show the new photo
+    } catch (error) {
+        console.error('Gallery upload failed:', error);
+        alert('Upload failed: ' + error.message);
+    } finally {
+        uploadButton.textContent = 'Upload Photo';
+        uploadButton.disabled = false;
+    }
+  }
+
   // --- Content Loading ---
   const contentLoaders = {
     notes: async () => {
@@ -496,6 +536,10 @@ document.addEventListener('DOMContentLoaded', function() {
       drawRoute([target.dataset.lat, target.dataset.lng], target.dataset.mode);
       if (state.map) state.map.closePopup();
     }
+    
+    // Handle gallery upload button click
+    if (id === 'gallery-upload-button') await handleGalleryUpload();
+
 
     // Modals
     if (target.closest('#open-upload-modal-button')) DOMElements.uploadModal.style.display = 'flex';
@@ -521,6 +565,80 @@ document.addEventListener('DOMContentLoaded', function() {
 
   });
 
+  // --- Sharing / Member Management ---
+  async function loadMembers() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !DOMElements.membersListContainer) return;
+
+    const { data: members, error } = await supabase.from('workspace_members').select('*').eq('workspace_owner_id', user.id);
+    if (error) {
+        console.error('Error loading members:', error);
+        state.members = [];
+    } else {
+        state.members = members;
+    }
+    renderMembers();
+  }
+
+  function renderMembers() {
+      if (!DOMElements.membersListContainer) return;
+      DOMElements.membersListContainer.innerHTML = state.members.length > 0 ? state.members.map(member => `
+          <div class="member-card user-card" data-member-id="${member.id}">
+              <div class="user-info">
+                  <p class="user-name">${member.member_email}</p>
+                  <span class="timestamp">Invited ${formatTimeAgo(member.created_at)}</span>
+              </div>
+              <button class="action-button delete-button" title="Remove Access">&times;</button>
+          </div>
+      `).join('') : '<p class="empty-state">You haven\'t invited anyone yet.</p>';
+  }
+
+  async function handleAddMember(e) {
+      e.preventDefault();
+      const email = DOMElements.newMemberEmail.value.trim();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!email || !user) return;
+
+      const newMember = {
+          workspace_owner_id: user.id,
+          member_email: email,
+      };
+
+      const { error } = await supabase.from('workspace_members').insert(newMember);
+      if (error) {
+          alert('Could not invite user. They may already be invited. Error: ' + error.message);
+      } else {
+          DOMElements.addMemberForm.reset();
+          await loadMembers();
+      }
+  }
+
+  async function handleMemberAction(e) {
+      const button = e.target.closest('.delete-button');
+      if (!button) return;
+      const card = e.target.closest('.member-card');
+      const memberId = card.dataset.memberId;
+      if (confirm('Are you sure you want to remove access for this user?')) {
+          const { error } = await supabase.from('workspace_members').delete().eq('id', memberId);
+          if (error) alert('Could not remove user: ' + error.message);
+          else await loadMembers();
+      }
+  }
+
+  // Add event listeners for the new sharing form
+  if (DOMElements.addMemberForm) DOMElements.addMemberForm.addEventListener('submit', handleAddMember);
+  if (DOMElements.membersListContainer) DOMElements.membersListContainer.addEventListener('click', handleMemberAction);
+
+  // Add event listener for the gallery file input to show a preview
+  DOMElements.galleryFileInput?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => DOMElements.imagePreview.src = event.target.result;
+          reader.readAsDataURL(file);
+          DOMElements.imagePreviewContainer.style.display = 'block';
+      }
+  });
   document.getElementById('icon-upload')?.addEventListener('change', (e) => handleIconUpload(e.target.files[0]));
 
   // --- App Initialization ---
